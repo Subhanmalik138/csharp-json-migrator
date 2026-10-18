@@ -55,44 +55,42 @@ public static class BuiltInTransforms
             }
         }
 
-        private static long ToLong(JsonNode value) => value switch
+        private static long ToLong(JsonNode value)
         {
-            JsonValue v when v.TryGetValue<long>(out var l) => l,
-            JsonValue v when v.TryGetValue<double>(out var d) => (long)d,
-            JsonValue v when v.TryGetValue<string>(out var s) && long.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var l) => l,
-            JsonValue v when v.TryGetValue<bool>(out var b) => b ? 1 : 0,
-            _ => throw new TransformException($"cannot coerce '{value}' to int.")
-        };
+            if (value is JsonValue v && v.TryGetValue<bool>(out var b))
+                return b ? 1 : 0;
+            try { return (long)ExpressionEvaluator.AsDouble(value); }
+            catch (TransformException) { throw new TransformException($"cannot coerce '{value}' to int."); }
+        }
 
-        private static double ToDouble(JsonNode value) => value switch
+        private static double ToDouble(JsonNode value)
         {
-            JsonValue v when v.TryGetValue<double>(out var d) => d,
-            JsonValue v when v.TryGetValue<long>(out var l) => l,
-            JsonValue v when v.TryGetValue<string>(out var s) && double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) => d,
-            _ => throw new TransformException($"cannot coerce '{value}' to double.")
-        };
+            try { return ExpressionEvaluator.AsDouble(value); }
+            catch (TransformException) { throw new TransformException($"cannot coerce '{value}' to double."); }
+        }
 
-        private static decimal ToDecimal(JsonNode value) => value switch
+        private static decimal ToDecimal(JsonNode value)
         {
-            JsonValue v when v.TryGetValue<decimal>(out var d) => d,
-            JsonValue v when v.TryGetValue<long>(out var l) => l,
-            JsonValue v when v.TryGetValue<double>(out var d) => (decimal)d,
-            JsonValue v when v.TryGetValue<string>(out var s) && decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) => d,
-            _ => throw new TransformException($"cannot coerce '{value}' to decimal.")
-        };
+            if (value is JsonValue v && v.TryGetValue<decimal>(out var d))
+                return d;
+            try { return (decimal)ExpressionEvaluator.AsDouble(value); }
+            catch (TransformException) { throw new TransformException($"cannot coerce '{value}' to decimal."); }
+        }
 
-        private static bool ToBool(JsonNode value) => value switch
+        private static bool ToBool(JsonNode value)
         {
-            JsonValue v when v.TryGetValue<bool>(out var b) => b,
-            JsonValue v when v.TryGetValue<string>(out var s) => s.ToLowerInvariant() switch
-            {
-                "true" or "1" or "yes" or "y" => true,
-                "false" or "0" or "no" or "n" => false,
-                _ => throw new TransformException($"cannot coerce '{value}' to bool.")
-            },
-            JsonValue v when v.TryGetValue<long>(out var l) => l != 0,
-            _ => throw new TransformException($"cannot coerce '{value}' to bool.")
-        };
+            if (value is JsonValue v && v.TryGetValue<bool>(out var b))
+                return b;
+            if (value is JsonValue sv && sv.TryGetValue<string>(out var s))
+                return s.ToLowerInvariant() switch
+                {
+                    "true" or "1" or "yes" or "y" => true,
+                    "false" or "0" or "no" or "n" => false,
+                    _ => throw new TransformException($"cannot coerce '{value}' to bool.")
+                };
+            try { return ExpressionEvaluator.AsDouble(value) != 0; }
+            catch (TransformException) { throw new TransformException($"cannot coerce '{value}' to bool."); }
+        }
 
         private static string ToStringValue(JsonNode value) => value switch
         {
@@ -115,15 +113,22 @@ public static class BuiltInTransforms
     private sealed class Format(string format) : ITransform
     {
         public string Name => $"format:{format}";
-        public JsonNode? Apply(JsonNode? value, TransformContext ctx) => value switch
+        public JsonNode? Apply(JsonNode? value, TransformContext ctx)
         {
-            JsonValue v when v.TryGetValue<double>(out var d) => JsonValue.Create(d.ToString(format, CultureInfo.InvariantCulture)),
-            JsonValue v when v.TryGetValue<long>(out var l) => JsonValue.Create(l.ToString(format, CultureInfo.InvariantCulture)),
-            JsonValue v when v.TryGetValue<string>(out var s)
-                && DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
-                => JsonValue.Create(dt.ToString(format, CultureInfo.InvariantCulture)),
-            _ => throw new TransformException($"format:{format} needs a number or date string, got '{value}'.")
-        };
+            // Date strings format as dates; everything numeric formats as a number.
+            if (value is JsonValue v && v.TryGetValue<string>(out var s)
+                && DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
+                return JsonValue.Create(dt.ToString(format, CultureInfo.InvariantCulture));
+            try
+            {
+                return JsonValue.Create(
+                    ExpressionEvaluator.AsDouble(value).ToString(format, CultureInfo.InvariantCulture));
+            }
+            catch (TransformException)
+            {
+                throw new TransformException($"format:{format} needs a number or date string, got '{value}'.");
+            }
+        }
     }
 
     private sealed class Add(double amount) : ITransform
@@ -140,13 +145,11 @@ public static class BuiltInTransforms
             JsonValue.Create(NumberOf(value) * factor);
     }
 
-    private static double NumberOf(JsonNode? value) => value switch
+    private static double NumberOf(JsonNode? value)
     {
-        JsonValue v when v.TryGetValue<double>(out var d) => d,
-        JsonValue v when v.TryGetValue<long>(out var l) => l,
-        JsonValue v when v.TryGetValue<string>(out var s) && double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) => d,
-        _ => throw new TransformException($"numeric transform needs a number, got '{value}'.")
-    };
+        try { return ExpressionEvaluator.AsDouble(value); }
+        catch (TransformException) { throw new TransformException($"numeric transform needs a number, got '{value}'."); }
+    }
 
     private sealed class Split(char separator) : ITransform
     {

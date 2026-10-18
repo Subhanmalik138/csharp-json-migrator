@@ -18,12 +18,18 @@ public static class PathNavigator
         JsonNode? current = root;
         foreach (var segment in Split(path))
         {
-            if (current is JsonObject obj && obj.TryGetPropertyValue(segment.Name, out var next))
+            if (segment.Name.Length > 0)
+            {
+                if (current is not JsonObject obj || !obj.TryGetPropertyValue(segment.Name, out var next))
+                    return null;
                 current = next;
-            else if (current is JsonArray arr && segment.Index is int i && i >= 0 && i < arr.Count)
+            }
+            if (segment.Index is int i)
+            {
+                if (current is not JsonArray arr || i < 0 || i >= arr.Count)
+                    return null;
                 current = arr[i];
-            else
-                return null;
+            }
             if (current is null)
                 return null;
         }
@@ -32,21 +38,29 @@ public static class PathNavigator
 
     /// <summary>
     /// Sets <paramref name="value"/> at <paramref name="path"/>, creating any
-    /// missing intermediate objects. A null value removes the property.
+    /// missing intermediate objects or arrays. A null value removes the property
+    /// (or clears the array element).
     /// </summary>
     public static void Set(JsonObject root, string path, JsonNode? value)
     {
         var segments = Split(path).ToList();
-        JsonNode current = root;
+        if (segments.Count == 0)
+            throw new ArgumentException("Path must not be empty.", nameof(path));
 
+        JsonNode current = root;
         for (var i = 0; i < segments.Count; i++)
         {
             var segment = segments[i];
             var last = i == segments.Count - 1;
 
-            if (current is JsonObject obj)
+            if (segment.Name.Length > 0)
             {
-                if (last)
+                if (current is not JsonObject obj)
+                    throw new InvalidOperationException(
+                        $"Cannot navigate path '{path}': '{segment.Name}' is not an object.");
+
+                // Last segment without an index assigns the property directly.
+                if (last && !segment.Index.HasValue)
                 {
                     if (value is null)
                         obj.Remove(segment.Name);
@@ -55,15 +69,19 @@ public static class PathNavigator
                     return;
                 }
 
-                if (!obj.TryGetPropertyValue(segment.Name, out var next) || next is not JsonObject)
+                if (!obj.TryGetPropertyValue(segment.Name, out var next) || next is not JsonArray && next is not JsonObject)
                 {
-                    next = new JsonObject();
+                    next = segment.Index.HasValue ? (JsonNode)new JsonArray() : new JsonObject();
                     obj[segment.Name] = next;
                 }
                 current = next!;
             }
-            else if (current is JsonArray arr && segment.Index is int idx)
+
+            if (segment.Index is int idx)
             {
+                if (current is not JsonArray arr)
+                    throw new InvalidOperationException(
+                        $"Cannot navigate path '{path}': '{segment.Name}' is not an array.");
                 while (arr.Count <= idx)
                     arr.Add(new JsonObject());
                 if (last)
@@ -71,14 +89,9 @@ public static class PathNavigator
                     arr[idx] = value?.DeepClone();
                     return;
                 }
-                if (arr[idx] is not JsonObject)
+                if (arr[idx] is not JsonObject && arr[idx] is not JsonArray)
                     arr[idx] = new JsonObject();
                 current = arr[idx]!;
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    $"Cannot navigate path '{path}': segment '{segment.Name}' is not an object or array.");
             }
         }
     }

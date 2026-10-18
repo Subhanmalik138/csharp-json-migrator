@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 
 namespace JsonMigrator.Transforms;
@@ -18,6 +19,27 @@ public static class ExpressionEvaluator
         return result % 1 == 0
             ? JsonValue.Create((long)result)
             : JsonValue.Create(result);
+    }
+
+    /// <summary>
+    /// Extracts a double from any numeric JSON value, tolerating every CLR
+    /// backing (int, long, decimal, double) as well as numeric strings.
+    /// Throws <see cref="TransformException"/> when the value is not numeric.
+    /// </summary>
+    internal static double AsDouble(JsonNode? value)
+    {
+        switch (value)
+        {
+            case JsonValue v when v.TryGetValue<double>(out var d):
+                return d;
+            case JsonValue v when v.TryGetValue<string>(out var s)
+                && double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed):
+                return parsed;
+            case JsonValue v
+                when double.TryParse(v.ToJsonString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var n):
+                return n;
+        }
+        throw new TransformException($"'{value}' is not numeric.");
     }
 
     private sealed class Parser(string expression, Func<string, JsonNode?> resolve)
@@ -77,15 +99,16 @@ public static class ExpressionEvaluator
             while (_pos < _text.Length && (char.IsLetterOrDigit(_text[_pos]) || _text[_pos] is '.' or '_' or '[' or ']'))
                 _pos++;
             var path = _text[start.._pos];
-            var node = resolve(path);
-            return node switch
+            var node = resolve(path)
+                ?? throw new TransformException($"expression '{_text}': field '${path}' not found.");
+            try
             {
-                null => throw new TransformException($"expression '{_text}': field '${path}' not found."),
-                JsonValue v when v.TryGetValue<double>(out var d) => d,
-                JsonValue v when v.TryGetValue<long>(out var l) => l,
-                JsonValue v when v.TryGetValue<string>(out var s) && double.TryParse(s, out var d) => d,
-                _ => throw new TransformException($"expression '{_text}': field '${path}' is not numeric.")
-            };
+                return AsDouble(node);
+            }
+            catch (TransformException)
+            {
+                throw new TransformException($"expression '{_text}': field '${path}' is not numeric.");
+            }
         }
 
         private double ParseNumber()
