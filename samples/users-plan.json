@@ -1,0 +1,76 @@
+{
+    "drops": [
+        "legacy_id",
+        "internal_notes"
+    ],
+    "lookups": {
+        "country": {
+            "DE": "Germany",
+            "GB": "United Kingdom",
+            "US": "United States"
+        }
+    },
+    "mappings": [
+        {
+            "required": true,
+            "source": "id",
+            "target": "id",
+            "transforms": [
+                "coerce:int"
+            ]
+        },
+        {
+            "source": "first_name",
+            "target": "profile.firstName",
+            "transforms": [
+                "trim"
+            ]
+        },
+        {
+            "source": "last_name",
+            "target": "profile.lastName",
+            "transforms": [
+                "trim"
+            ]
+        },
+        {
+            "required": true,
+            "source": "email",
+            "target": "contact.email",
+            "transforms": [
+                "trim",
+                "lowercase"
+            ]
+        },
+        {
+            "source": "country_code",
+            "target": "contact.country",
+            "transforms": [
+                "lookup:country"
+            ]
+        },
+        {
+            "source": "signup_date",
+            "target": "createdAt",
+            "transforms": [
+                "coerce:datetime",
+                "format:yyyy-MM-dd"
+            ]
+        },
+        {
+            "source": "price",
+            "target": "order.total",
+            "transforms": [
+                "compute:$price * $quantity"
+            ]
+        },
+        {
+            "default": "Anonymous",
+            "onMissing": "default",
+            "source": "nickname",
+            "target": "profile.displayName"
+        }
+    ],
+    "name": "users-v1-to-v2",
+    "version": 1
+}

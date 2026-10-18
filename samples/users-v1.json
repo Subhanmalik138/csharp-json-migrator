@@ -1,0 +1,27 @@
+[
+    {
+        "country_code": "GB",
+        "email": "ADA@EXAMPLE.COM",
+        "first_name": "  Ada ",
+        "id": "101",
+        "internal_notes": "vip",
+        "last_name": "Lovelace",
+        "legacy_id": "OLD-1",
+        "price": 19.99,
+        "quantity": 3,
+        "referrer": "newsletter",
+        "signup_date": "2023-04-12T09:30:00Z"
+    },
+    {
+        "country_code": "US",
+        "email": "grace@example.com",
+        "first_name": "Grace",
+        "id": 102,
+        "last_name": "Hopper",
+        "legacy_id": "OLD-2",
+        "nickname": "Amazing Grace",
+        "price": "7.5",
+        "quantity": 2,
+        "signup_date": "2022-11-01"
+    }
+]
