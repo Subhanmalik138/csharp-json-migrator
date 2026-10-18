@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using JsonMigrator.Transforms;
 
 namespace JsonMigrator;
 
@@ -39,9 +40,8 @@ public sealed class MappingRule
     public JsonNode? DefaultValue { get; init; }
 
     /// <summary>
-    /// Validates the structural parts of this rule (paths, defaults), throwing
-    /// <see cref="PlanValidationException"/> with every problem found.
-    /// Transform specs are validated by the transform registry once transforms exist.
+    /// Validates the structural parts of this rule plus every transform spec,
+    /// throwing <see cref="PlanValidationException"/> with every problem found.
     /// </summary>
     public void Validate()
     {
@@ -52,6 +52,11 @@ public sealed class MappingRule
             errors.Add($"mapping '{Source}' is missing 'target'.");
         if (OnMissing == MissingFieldBehavior.UseDefault && DefaultValue is null)
             errors.Add($"mapping '{Source}': onMissing is 'default' but no 'default' value is set.");
+        try { TransformRegistry.ParseAll(Transforms); }
+        catch (PlanValidationException ex)
+        {
+            errors.AddRange(ex.Errors.Select(e => $"mapping '{Source}': {e}"));
+        }
         if (errors.Count > 0)
             throw new PlanValidationException(errors);
     }
